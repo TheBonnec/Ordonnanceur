@@ -44,74 +44,167 @@ def display_tasks(tasks):
     for task in tasks:
         print(f"Id : {task.id}\nExécution : {task.exec_t}\nÉchéance : {task.deadline}\nPériode : {task.period}\nPriorité : {task.priority}\n")
 
-# Premier test de faisabilité
-def faisabilite1(tasks):
+# Vérification des conditions de U et Urm, et test de faisabilité selon l'algorithme choisi
+def test_faisabilite(tasks, schedulerChoice):
     n_tasks = len(tasks)
-    Urm = n_tasks * (math.pow(2, 1.0 / n_tasks) - 1)
-    
     U = sum(task.exec_t / task.period for task in tasks)
-    
-    print(f"U = {U}, Urm = {Urm}")
-    
-    # Sortie
-    if U > 1 or U >= Urm:
-        return 0  # Système non faisable
-    elif U <= Urm and U < 1:
-        return 1  # Système faisable
-    else:
-        return 2  # Problème
 
-# Fonction récursive pour le deuxième test de faisabilité
-def recursive(tasks, Tj, i, R, n_tasks):
-    if Tj == 0:
-        return tasks[i].exec_t
-    else:
-        Tj += 1
-        R[i][Tj] = tasks[i].exec_t
-        for j in range(n_tasks):
-            if j != i and tasks[j].period < tasks[i].period:
-                R[i][Tj] += (R[i][Tj - 1] / tasks[j].period) * tasks[j].exec_t
+    print(f"Calcul de U : {U}")
+    
+    # Premier test de validité : U doit être <= 1
+    if U > 1:
+        print("Le système n'est pas faisable car U > 1.")
+        return False
 
-        if R[i][Tj] == R[i][Tj - 1]:
-            return R[i][Tj]
+    print("Le système respecte la condition U <= 1.")
+    
+    # Si l'utilisateur a choisi RM, on vérifie Urm
+    if schedulerChoice == "RM":
+        Urm = n_tasks * (math.pow(2, 1.0 / n_tasks) - 1)
+        print(f"Calcul de Urm : {Urm}")
+        if U <= Urm:
+            print("Le système est faisable car U <= Urm.")
+            return True
         else:
-            return recursive(tasks, Tj, i, R, n_tasks)
+            print("Urm < U, on ne sait pas encore, on vérifie !")
+            return None  # Continuer la vérification de faisabilité pour RM
 
-# Simulation simple (sans préemption)
-def schedulerSimu(tasks, simulationTime):
+    # Si HPF ou DM, on passe au second test de faisabilité (à implémenter)
+    if schedulerChoice in ["HPF", "DM"]:
+        print("Passons au deuxième test de faisabilité pour HPF ou DM (à implémenter).")
+        # Ici, implémentez votre second test de faisabilité.
+        return None
+
+# Simulation sans préemption (non modifiée)
+def schedulerSimuNonPreemptive(tasks, simulationTime, schedulerType):
+    currentTask = None
     for time in range(simulationTime):
         print(f"Temps : {time}")
         taskExecuted = False
-
-        for task in tasks:
-            if time >= task.nextStartTime and task.remainingTime > 0:
-                print(f"Exécution de {task.id} (période: {task.period}, échéance: {task.deadline}, priorité: {task.priority})")
-                task.remainingTime -= 1
-                taskExecuted = True
-
-                # Si la tâche est terminée
-                if task.remainingTime == 0:
-                    if time > task.deadline:
+        
+        if currentTask is None or currentTask.remainingTime == 0:
+            if schedulerType == "HPF":
+                tasks.sort(key=lambda x: x.priority, reverse=True)
+            elif schedulerType == "RM":
+                tasks.sort(key=lambda x: x.period)
+            elif schedulerType == "DM":
+                tasks.sort(key=lambda x: x.deadline)
+                
+            for task in tasks:
+                if time >= task.nextStartTime and task.remainingTime > 0:
+                    if time > task.deadline and not task.deadlineMissed:
                         print(f"La tâche {task.id} a échoué son échéance à t={time}.")
                         task.deadlineMissed = True
-                    else:
-                        print(f"Tâche {task.id} terminée à t={time}.")
-                    task.nextStartTime += task.period
-                    task.remainingTime = task.exec_t  
-                break 
+                    currentTask = task
+                    break
+
+        if currentTask:
+            print(f"Exécution de {currentTask.id} (période: {currentTask.period}, échéance: {currentTask.deadline}, priorité: {currentTask.priority})")
+            currentTask.remainingTime -= 1
+            taskExecuted = True
+
+            if currentTask.remainingTime == 0:
+                if time <= currentTask.deadline:
+                    print(f"{currentTask.id} est terminé à t={time}.")
+                currentTask.nextStartTime += currentTask.period
+                currentTask.remainingTime = currentTask.exec_t
+                currentTask = None
 
         if not taskExecuted:
             print("Aucune tâche à exécuter.")
 
-# Sélection de l'ordonnanceur avec validation
-def choose_scheduler():
+# Simulation avec préemption (non modifiée)
+def schedulerSimuPreemptive(tasks, simulationTime, schedulerType):
+    currentTask = None
+    for time in range(simulationTime):
+        print(f"Temps : {time}")
+        taskExecuted = False
+
+        if schedulerType == "HPF":
+            tasks.sort(key=lambda x: x.priority, reverse=True)
+        elif schedulerType == "RM":
+            tasks.sort(key=lambda x: x.period)
+        elif schedulerType == "DM":
+            tasks.sort(key=lambda x: x.deadline)
+
+        for task in tasks:
+            if time >= task.nextStartTime and task.remainingTime > 0:
+                if currentTask is None or (schedulerType == "HPF" and task.priority > currentTask.priority) or \
+                   (schedulerType == "RM" and task.period < currentTask.period) or \
+                   (schedulerType == "DM" and task.deadline < currentTask.deadline):
+                    if currentTask and currentTask != task:
+                        if schedulerType == "RM":
+                            print(f"Tâche {task.id} (période: {task.period}) interrompt la tâche {currentTask.id} (période: {currentTask.period}) à t={time}.")
+                        elif schedulerType == "HPF":
+                            print(f"Tâche {task.id} (priorité: {task.priority}) interrompt la tâche {currentTask.id} (priorité: {currentTask.priority}) à t={time}.")
+                        elif schedulerType == "DM":
+                            print(f"Tâche {task.id} (échéance: {task.deadline}) interrompt la tâche {currentTask.id} (échéance: {currentTask.deadline}) à t={time}.")
+                    currentTask = task
+                break
+        
+        if currentTask:
+            print(f"Exécution de {currentTask.id} (période: {currentTask.period}, échéance: {currentTask.deadline}, priorité: {currentTask.priority})")
+            currentTask.remainingTime -= 1
+            taskExecuted = True
+
+            if currentTask.remainingTime == 0:
+                if time > currentTask.deadline:
+                    print(f"La tâche {currentTask.id} a échoué son échéance à t={time}.")
+                    currentTask.deadlineMissed = True
+                else:
+                    print(f"{currentTask.id} est terminé à t={time}.")
+                currentTask.nextStartTime += currentTask.period
+                currentTask.remainingTime = currentTask.exec_t  
+                currentTask = None
+
+        if not taskExecuted:
+            print("Aucune tâche à exécuter.")
+
+# Choix de l'ordonnanceur et faisabilité
+def choose_scheduler(tasks, simulationTime):
     while True:
         print("Choisissez l'algorithme d'ordonnancement :")
         print("1. HPF (Highest Priority First)")
         print("2. RM (Rate Monotonic)")
         print("3. DM (Deadline Monotonic)")
-        choice = getValidInt("Votre choix (1/2/3) : ", minValue=1, maxValue=3)
-        return choice
+        schedulerChoice = getValidInt("Votre choix (1/2/3) : ", minValue=1, maxValue=3)
+
+        # Convertir le choix en texte pour faciliter l'utilisation
+        schedulerType = None
+        if schedulerChoice == 1:
+            schedulerType = "HPF"
+        elif schedulerChoice == 2:
+            schedulerType = "RM"
+        elif schedulerChoice == 3:
+            schedulerType = "DM"
+
+        print(f"Algorithme choisi : {schedulerType}")
+
+        # Test de faisabilité en fonction de l'algorithme choisi
+        faisabilite_result = test_faisabilite(tasks, schedulerType)
+
+        # Si le test de faisabilité est validé
+        if faisabilite_result is True:
+            print(f"Le système est faisable avec l'algorithme {schedulerType}.")
+        elif faisabilite_result is None:
+            print(f"Le système nécessite des vérifications supplémentaires pour l'algorithme {schedulerType}.")
+            # Appeler le deuxième test de faisabilité si nécessaire (implémentation à ajouter)
+
+        # Choix de la préemption
+        print("Souhaitez-vous utiliser la préemption ?")
+        print("1. Oui (préemption activée)")
+        print("2. Non (pas de préemption)")
+        preemptionChoice = getValidInt("Votre choix (1/2) : ", minValue=1, maxValue=2)
+
+        # Lancer la simulation en fonction du choix de l'utilisateur (préemptif ou non)
+        if preemptionChoice == 1:
+            print(f"Simulation avec préemption en utilisant {schedulerType}.")
+            schedulerSimuPreemptive(tasks, simulationTime, schedulerType)
+        else:
+            print(f"Simulation sans préemption en utilisant {schedulerType}.")
+            schedulerSimuNonPreemptive(tasks, simulationTime, schedulerType)
+
+        break  # Quitter la boucle après avoir fait un choix valide
 
 # Fonction principale
 def main():
@@ -121,44 +214,24 @@ def main():
     # Déclaration des tâches
     while len(tasks) < max_tasks:
         tasks.append(declare_task())
-        continue_declaration = input("Déclarer une autre tâche ? (y/n) : ").strip().lower()
-        if continue_declaration != 'y':
+        # Boucle de validation pour "y" ou "n"
+        while True:
+            continue_declaration = input("Déclarer une autre tâche ? (y/n) : ").strip().lower()
+            if continue_declaration in ['y', 'n']:
+                break
+            else:
+                print("Veuillez rentrer un 'y' ou 'n' valide.")
+        
+        if continue_declaration == 'n':
             break
 
     # Afficher les tâches déclarées
     display_tasks(tasks)
 
-    # Premier test de faisabilité
-    feasibility_result = faisabilite1(tasks)
-
-    if feasibility_result == 0:
-        print("Le système n'est pas faisable.")
-    elif feasibility_result == 1:
-        print("Le système est faisable.")
-    elif feasibility_result == 2:
-        # Deuxième test de faisabilité
-        R = [[0 for _ in range(10)] for _ in range(10)]  # Vous pouvez ajuster la taille de R
-        for i in range(len(tasks)):
-            R_value = recursive(tasks, 0, i, R, len(tasks))
-            if R_value > tasks[i].deadline:
-                print("Le système n'est pas faisable.")
-                return
-        print("Le système est faisable.")
-
-    # Choix de l'ordonnanceur
+    # Premier test de faisabilité avec calcul de U et Urm
     simulationTime = getValidInt("Entrez le temps de simulation (en secondes) : ", minValue=1)
-    schedulerChoice = choose_scheduler()
-
-    # Ordonnancement basé sur le choix
-    if schedulerChoice == 1:
-        print("Ordonnancement HPF choisi.")
-    elif schedulerChoice == 2:
-        print("Ordonnancement RM choisi.")
-    elif schedulerChoice == 3:
-        print("Ordonnancement DM choisi.")
-    
-    # Simulation
-    schedulerSimu(tasks, simulationTime)
+    choose_scheduler(tasks, simulationTime)
 
 if __name__ == "__main__":
     main()
+
